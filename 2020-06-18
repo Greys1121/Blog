@@ -1,0 +1,48 @@
+
+SpringBoot 中 tomcat 有关的关键配置
+
+tomcat中与并发有关的参数主要是4个：
+  (1) server.tomcat.threads.max
+  (2) server.tomcat.threads.min-spare
+  (3) server.tomcat.max-connections
+  (4) server.tomcat.connection-timeout
+  (5) server.tomcat.accept-count
+  原文档链接：https://docs.spring.io/spring-boot/docs/2.3.1.RELEASE/reference/html/appendix-application-properties.html#server-properties, 
+  springboot的版本是2.3.1.RELEASE
+  
+1、其中 max-threads 是最大线程数，它决定了服务器可以同时处理多少个请求，每个http请求过来，服务器创建一个线程去处理。
+  server.tomcat.threads.max = 200.0  ##Maximum amount of worker threads.
+  server.tomcat.threads.min-spare = 10.0  ##Minimum amount of worker threads.
+  max-threads的默认值是200，这个值肯定可以适当增大，但是增加时要考虑到增加线程带来的内存消耗、线程上下文切换的成本。一般1核2G内存，设置200；4核8G设置为800.
+
+2、min-threads是最小线程数，这个参数的设置一般不做修改
+
+3、max-connections
+  springboot官网的说明是 Maximum number of connections that the server accepts and processes at any given time. 
+  Once the limit has been reached, the operating system may still accept connections based on the "acceptCount" property. 用中文来说就是，
+  同一时间server最大可接受的连接数目，一旦达到这个值，操作系统剩余可接受的连接数取决于 “acceptCount” 的设置。 默认值是8092，即1024*8，
+  我看到有人说这个值如果不是1024的倍数，那么系统自动下降到1024的倍数，我还未验证过，不过，最好设置成1024的倍数。
+
+4、connection-timeout
+  springboot官网的说明是 Amount of time the connector will wait, after accepting a connection, for the request URI line to be presented.
+  connection-timeout是没有默认值的，它是连接的生命周期时长
+
+5、accept-count
+  springboot官网的说明是 Maximum queue length for incoming connection requests when all possible request processing threads are in use.
+  它的默认值是100，当所有的处理线程都在使用时，所能接收的连接的请求队列的最大长度。当队列已满时，任何的连接请求都将被拒绝。
+
+我们在真实使用的时候，主要弄清楚 accept-count、max-connections、max-threads这3者的关系，以及tomcat下BIO、NIO的关系、springboot可以配置IO类型吗这3个问题。
+ 首先 accept-count、max-connections、max-threads 3者的关系： 我们一般习惯借用一些通俗的事情来说明比较抽象的关系，哈哈。 比如，以按摩为例子，
+ 现在有10个技师，20个房间，30个去按摩的客人。那么开始，有20个客人可以进入到房间，10个人在排队等待，10个技师在处理完1个房间才进入另一个房间，相对于CPU的
+ 轮流处理。此时，max-threads 就是技师的数目， max-connections就是房间的数目， accept-count就是排队的人数。 如果accept-count等于5，那么有5人会将拿不到
+ 排队号码，只能去别的地方。 好了，举例over。
+ 
+ 其次，BIO与NIO的关系
+ BIO是同步阻塞，线程发起IO请求，不管内核是否准备好IO操作，从发起请求起，线程一直阻塞，直到操作完成。如果tomcat使用的是BIO，那么maxConnections的值应该与maxThreads一致；
+ NIO是同步非阻塞，线程发起IO请求，立即返回；内核在做好IO操作的准备之后，通过调用注册的回调函数通知线程做IO操作，直到操作完成。这个过程中多个线程的IO请求都是可以被提交的，
+ 只是何时执行，需要等待。NIO中会有一个selector选择器来不断的轮询提交的请求可不可以被处理。 如果tomcat使用的是NIO，maxConnections值应该远大于maxThreads。
+ 
+ 最后，springboot配置IO类型
+ 我看了springboot的server-properties所有配置，没有关于IO的配置，最后网上搜索了一下，又查看了源码，发现springboot其实配置了默认的IO
+ 在类TomcatServletWebServerFactory中定义了 DEFAULT_PROTOCOL = "org.apache.coyote.http11.Http1NioProtocol"，即tomcat默认用的是NIO，这也解释了
+ 为什么springboot下 maxConnections的默认值 与 maxThreads的默认值 不相同。
